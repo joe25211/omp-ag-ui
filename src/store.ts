@@ -27,8 +27,6 @@ type EventRow = { seq: number; event_json: string };
 const MAX_ID_LENGTH = 256;
 const SYNTHETIC_TOOL_RESULT =
   "Error: Adapter stopped before a tool result was recorded; execution outcome unknown; do not retry automatically.";
-const TERMINAL_TYPES = new Set<string>([EventType.RUN_FINISHED, EventType.RUN_ERROR]);
-const NON_CONVERSATIONAL_ROLES = new Set<string>(["activity", "reasoning"]);
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS threads (
@@ -231,7 +229,7 @@ export class RunStore {
     let finalUser: UserMessage | undefined;
     for (let index = input.messages.length - 1; index >= 0; index--) {
       const message = input.messages[index]!;
-      if (NON_CONVERSATIONAL_ROLES.has(message.role)) continue;
+      if (message.role === "activity" || message.role === "reasoning") continue;
       if (message.role === "user") finalUser = message;
       break;
     }
@@ -340,7 +338,7 @@ export class RunStore {
     const run = this.#selectRun.get(threadId, runId) as RunRow | null;
     if (!run) throw new Error(`Run ${runId} of thread ${threadId} is not recorded.`);
     if (run.status !== "running") throw new Error(`Run ${runId} of thread ${threadId} is already finished.`);
-    const terminal = TERMINAL_TYPES.has(event.type);
+    const terminal = event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR;
     this.#transaction(() => {
       if (terminal) this.#balance(threadId, runId);
       this.#appendEvent(threadId, runId, event);
